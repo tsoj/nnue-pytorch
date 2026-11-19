@@ -51,7 +51,8 @@ NNUE_API FenBatchStream* NNUE_CDECL create_fen_batch_stream(int                 
     auto filenames_vec = std::vector<std::string>(filenames, filenames + num_files);
 
     return new FenBatchStream(concurrency, filenames_vec, batch_size, cyclic, skipPredicate,
-                              ddp_config.rank, ddp_config.world_size, nullptr, io_config);
+                              ddp_config.rank, ddp_config.world_size, nullptr, io_config,
+                              score_filter::Config{config.score_filter_decay, config.filtered});
 }
 
 NNUE_API NNUE_COLD void NNUE_CDECL destroy_fen_batch_stream(FenBatchStream* stream) {
@@ -83,7 +84,8 @@ NNUE_API SparseBatchStream* NNUE_CDECL create_sparse_batch_stream(const char*   
 
     auto stream = new FeaturedBatchStream(
       std::move(feature), std::move(*ls_keys), concurrency, filenames_vec, batch_size, cyclic,
-      skipPredicate, ddp_config.rank, ddp_config.world_size, counter.release(), io_config);
+      skipPredicate, ddp_config.rank, ddp_config.world_size, counter.release(), io_config,
+      score_filter::Config{config.score_filter_decay, config.filtered});
     return reinterpret_cast<SparseBatchStream*>(stream);
 }
 

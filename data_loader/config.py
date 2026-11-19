@@ -49,6 +49,8 @@ class DataloaderSkipConfig:
     """Ply soft filter control point y4."""
     tree_sample_accept: float = 1.0
     """Acceptance probability for search-tree samples (ply 9999), which skip the other filters."""
+    score_filter_decay: float = 0.5
+    """Temporal score filter. Replaces each kept position's score by the decay-weighted average, as win probabilities (sigmoid(score/380)), of its own score and the scores of up to 10 following plies of the same game, with alternating perspective since scores are side-to-move relative: weight d^k for the position k plies ahead. Following positions with unreliable scores (placeholder zeros, and with --filtered captures and checks) are left out of the average but still count towards k; positions dropped only by the random, early-ply, piece-count or WLD skipping still count. 0 = disabled, must be in [0, 1). The filters themselves see the original scores."""
 
 
 @dataclass
@@ -130,6 +132,7 @@ class CDataloaderSkipConfig(ctypes.Structure):
         ("ply_x4", ctypes.c_double),
         ("ply_y4", ctypes.c_double),
         ("tree_sample_accept", ctypes.c_double),
+        ("score_filter_decay", ctypes.c_double),
     ]
 
     def __init__(self, config: DataloaderSkipConfig):
@@ -155,6 +158,7 @@ class CDataloaderSkipConfig(ctypes.Structure):
             ply_x4=config.ply_x4,
             ply_y4=config.ply_y4,
             tree_sample_accept=config.tree_sample_accept,
+            score_filter_decay=config.score_filter_decay,
         )
 
 

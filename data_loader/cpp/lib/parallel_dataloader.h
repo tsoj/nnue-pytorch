@@ -145,6 +145,7 @@ THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rng.h"
 #include "thread_safe_types.h"
 #include "binpack.h"
+#include "score_filter.h"
 #include "training_data_entry.h"
 #include "unique_counter.h"
 #include "compressed_hash.h"
@@ -369,13 +370,15 @@ namespace binpack
             int rank = 0,
             int world_size = 1,
             DataloaderIOConfig io_config = {},
-            int num_consumer_threads = 4
+            int num_consumer_threads = 4,
+            score_filter::Config scoreFilter = {}
         ) :
             m_concurrency(concurrency),
             m_numRunningWorkers(concurrency),
             m_cyclic(cyclic),
             m_skipPredicate(std::move(skipPredicate)),
             m_counter(counter),
+            m_scoreFilter(scoreFilter),
             m_rank(rank),
             m_world_size(world_size)
         {
@@ -724,10 +727,76 @@ namespace binpack
                     }
                 } workerExit{this};
 
+                auto isSkipped = [&](const TrainingDataEntry& e) -> bool
+                {
+                    return m_skipPredicate && m_skipPredicate(e);
+                };
+
+                // Appends an accepted entry to the scratch buffer.
+                // Returns false if the pool stopped.
+                auto append = [&](const TrainingDataEntry& e, std::int16_t score) -> bool
+                {
+                    scratch.emplace_back(e);
+                    scratch.back().score = score;
+                    if (m_counter)
+                    {
+                        keyBuffer.push_back(nnue::hash::hash(e.pos));
+                        if (keyBuffer.size() >= keyFlushThreshold)
+                            flushAll();
+                    }
+                    if (scratch.size() >= kWorkerScratchEntries)
+                    {
+                        if (!m_pool->append(scratch))
+                        {
+                            flushAll();
+                            return false; // stopped
+                        }
+                    }
+                    return true;
+                };
+
                 bool isEnd = fetchNextChunkFromSharedQueue(m_chunkReader, m_chunk);
+
+                // Only used with the temporal score filter.
+                std::vector<TrainingDataEntry> chunkEntries;
+                std::vector<char> chunkIsCont;
+                std::vector<std::int16_t> chunkScores;
+                std::vector<char> chunkKeep;
 
                 while(!isEnd && !m_stopFlag.load())
                 {
+                    if (m_scoreFilter.enabled())
+                    {
+                        // Decode the whole chunk first: chains never span
+                        // chunks, so the filter has all the context it needs.
+                        // The (stateful) skip predicate sees the original
+                        // entries exactly once in their original order, so the
+                        // accepted set is the same as without the filter; the
+                        // filtered score is only written into accepted entries.
+                        chunkEntries.clear();
+                        chunkIsCont.clear();
+                        while (m_chunkReader.hasNext(m_chunk))
+                        {
+                            chunkIsCont.push_back(m_chunkReader.nextIsContinuation());
+                            chunkEntries.push_back(m_chunkReader.next(m_chunk));
+                        }
+                        isEnd = fetchNextChunkFromSharedQueue(m_chunkReader, m_chunk);
+
+                        chunkKeep.resize(chunkEntries.size());
+                        for (std::size_t i = 0; i < chunkEntries.size(); ++i)
+                            chunkKeep[i] = !isSkipped(chunkEntries[i]);
+
+                        score_filter::apply(chunkEntries, chunkIsCont, m_scoreFilter, chunkScores, &chunkKeep);
+
+                        if (m_counter) preskip_count += chunkEntries.size();
+                        for (std::size_t i = 0; i < chunkEntries.size(); ++i)
+                        {
+                            if (chunkKeep[i] && !append(chunkEntries[i], chunkScores[i]))
+                                return;
+                        }
+                        continue;
+                    }
+
                     const auto e = m_chunkReader.next(m_chunk);
                     if (m_counter) ++preskip_count;
 
@@ -736,24 +805,8 @@ namespace binpack
                         isEnd = fetchNextChunkFromSharedQueue(m_chunkReader, m_chunk);
                     }
 
-                    if (!m_skipPredicate || !m_skipPredicate(e))
-                    {
-                        scratch.emplace_back(e);
-                        if (m_counter)
-                        {
-                            keyBuffer.push_back(nnue::hash::hash(e.pos));
-                            if (keyBuffer.size() >= keyFlushThreshold)
-                                flushAll();
-                        }
-                        if (scratch.size() >= kWorkerScratchEntries)
-                        {
-                            if (!m_pool->append(scratch))
-                            {
-                                flushAll();
-                                return; // stopped
-                            }
-                        }
-                    }
+                    if (!isSkipped(e) && !append(e, e.score))
+                        return;
                 }
 
                 if (!scratch.empty() && !m_stopFlag.load())
@@ -913,6 +966,8 @@ namespace binpack
         std::vector<std::unique_ptr<std::timed_mutex>> m_fileMutexes;
         std::function<bool(const TrainingDataEntry&)> m_skipPredicate;
         nnue::UniquePositionCounter* m_counter = nullptr;
+        // Temporal score filter (see score_filter.h).
+        score_filter::Config m_scoreFilter;
 
         // ---- Read balancing: sliding window + per-file claims ----
         // Reads are picked by argmax deficit (size-proportional share of the

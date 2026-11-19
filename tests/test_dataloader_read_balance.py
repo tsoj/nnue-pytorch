@@ -47,6 +47,7 @@ SKIP_ALL_OFF = DataloaderSkipConfig(
     early_fen_skipping=-1,
     soft_early_fen_skipping=0,
     simple_eval_skipping=-1,
+    score_filter_decay=0.0,
 )
 
 

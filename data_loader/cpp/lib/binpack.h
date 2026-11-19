@@ -491,6 +491,15 @@ namespace binpack
             return !m_isEnd && m_offset + sizeof(PackedTrainingDataEntry) + 2 <= chunk.size();
         }
 
+        // True if the entry returned by the next call to next() directly
+        // follows the previously returned one in the same game (it is stored
+        // in a movelist). Chains never span chunks, so this is false for the
+        // first entry of every chunk.
+        [[nodiscard]] bool nextIsContinuation() const
+        {
+            return m_movelistReader.has_value();
+        }
+
         [[nodiscard]] TrainingDataEntry next(std::vector<unsigned char>& chunk)
         {
             if (m_movelistReader.has_value())

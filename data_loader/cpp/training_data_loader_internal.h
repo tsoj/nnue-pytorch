@@ -135,7 +135,8 @@ struct Stream: AnyStream {
            int                                                           rank       = 0,
            int                                                           world_size = 1,
            DataloaderIOConfig                                            io_config  = {},
-           int                                                           num_consumer_threads = 4) :
+           int                                                           num_consumer_threads = 4,
+           score_filter::Config                                                        score_filter_cfg   = {}) :
         m_stream(training_data::open_sfen_input_file_parallel(concurrency,
                                                               filenames,
                                                               cyclic,
@@ -144,7 +145,8 @@ struct Stream: AnyStream {
                                                               rank,
                                                               world_size,
                                                               io_config,
-                                                              num_consumer_threads)) {
+                                                              num_consumer_threads,
+                                                              score_filter_cfg)) {
         if (counter)
             m_unique_counter.reset(counter);
     }
@@ -178,7 +180,8 @@ struct FeaturedBatchStream final: Stream<SparseBatch> {
                         int                                                           rank = 0,
                         int                          world_size                            = 1,
                         nnue::UniquePositionCounter* counter   = nullptr,
-                        DataloaderIOConfig           io_config = {});
+                        DataloaderIOConfig           io_config = {},
+                        score_filter::Config                       score_filter_cfg = {});
     ~FeaturedBatchStream() final;
 
     SparseBatch* next() override;
@@ -238,7 +241,8 @@ struct FenBatchStream final: Stream<FenBatch> {
                    int                                                           rank       = 0,
                    int                                                           world_size = 1,
                    nnue::UniquePositionCounter*                                  counter = nullptr,
-                   DataloaderIOConfig                                            io_config = {});
+                   DataloaderIOConfig                                            io_config = {},
+                   score_filter::Config                                                        score_filter_cfg = {});
     ~FenBatchStream() final;
 
     FenBatch* next() override;

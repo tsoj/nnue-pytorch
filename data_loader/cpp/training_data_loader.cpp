@@ -705,7 +705,8 @@ FeaturedBatchStream::FeaturedBatchStream(
   int                                           rank,
   int                                           world_size,
   nnue::UniquePositionCounter*                  counter,
-  DataloaderIOConfig                            io_config) :
+  DataloaderIOConfig                            io_config,
+  score_filter::Config score_filter_cfg) :
     BaseType(calculate_num_reader_threads(concurrency),
              filenames,
              cyclic,
@@ -714,7 +715,8 @@ FeaturedBatchStream::FeaturedBatchStream(
              rank,
              world_size,
              io_config,
-             calculate_num_worker_threads(concurrency)),
+             calculate_num_worker_threads(concurrency),
+             score_filter_cfg),
     m_feature_set(std::move(feature_set)),
     m_ls_keys(std::move(ls_keys)),
     m_batch_size(batch_size),
@@ -845,7 +847,8 @@ FenBatchStream::FenBatchStream(int                                           con
                                int                                           rank,
                                int                                           world_size,
                                nnue::UniquePositionCounter*                  counter,
-                               DataloaderIOConfig                            io_config) :
+                               DataloaderIOConfig                            io_config,
+  score_filter::Config score_filter_cfg) :
     BaseType(calculate_num_reader_threads(concurrency),
              filenames,
              cyclic,
@@ -854,7 +857,8 @@ FenBatchStream::FenBatchStream(int                                           con
              rank,
              world_size,
              io_config,
-             calculate_num_worker_threads(concurrency)),
+             calculate_num_worker_threads(concurrency),
+             score_filter_cfg),
     m_batch_size(batch_size),
     m_concurrency(concurrency),
     m_num_workers(calculate_num_worker_threads(concurrency)),

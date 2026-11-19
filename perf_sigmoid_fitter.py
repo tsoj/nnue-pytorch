@@ -110,6 +110,7 @@ def gather_statistics_from_data(filename: str, count: int, bucket_size: int):
         1,
         data_loader.DataloaderSkipConfig(
             filtered=smart_fen_skipping,
+            score_filter_decay=0.0,  # fit on the raw search scores
         ),
     )
     batches = iter(dataset)
