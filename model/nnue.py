@@ -125,7 +125,6 @@ class NNUE(nn.Module):
                 # losses still propagate into the epoch metric.
                 "train_loss_epoch": MeanMetric(nan_strategy="disable"),
                 "val_loss_epoch": MeanMetric(nan_strategy="disable"),
-                "test_loss_epoch": MeanMetric(nan_strategy="disable"),
             }
         )
 
@@ -290,12 +289,6 @@ class NNUE(nn.Module):
     def on_validation_epoch_end(self):
         self.loss_metrics["val_loss_epoch"].reset()
 
-    def on_test_epoch_start(self):
-        self.optimizer_wrapper.on_test_epoch_start(self)
-
-    def on_test_epoch_end(self):
-        self.loss_metrics["test_loss_epoch"].reset()
-
     def on_save_checkpoint(self, checkpoint):
         self.optimizer_wrapper.on_save_checkpoint(self, checkpoint)
         self.lambda_scheduler.on_save_checkpoint(checkpoint)
@@ -379,12 +372,19 @@ class NNUE(nn.Module):
         self.loss_metrics["val_loss_epoch"].update(loss)
         return {"val_loss": loss}
 
-    @torch.no_grad()
-    def test_step(self, batch, current_epoch, global_step):
-        _ = current_epoch
-        loss = self.compute_loss(batch, global_step)
-        self.loss_metrics["test_loss_epoch"].update(loss)
-        return {"test_loss": loss}
+    def prefetch_hook(self):
+        """``hook(batch)`` for the loader's prefetch thread (FixedNumBatchesDataset), or None: the
+        index-only work the model can do on a training batch once it is on the GPU, ahead of the
+        step. It unpacks the batch as compute_loss does."""
+        prepare = self.model.input.prefetch_preparer()
+        if prepare is None:
+            return None
+
+        def hook(batch):
+            _us, _them, white_indices, black_indices, *_rest = batch
+            prepare(white_indices, black_indices)
+
+        return hook
 
     def compute_loss(self, batch: tuple[Tensor, ...], current_step: int):
         quantize = current_step >= self.config.fake_quant_warmup_steps
@@ -433,7 +433,11 @@ class NNUE(nn.Module):
         if not torch.is_tensor(actual_lambda):
             # A stable tensor input keeps the compiled loss from respecializing
             # on every schedule value when jitter is disabled.
-            actual_lambda = scorenet.new_tensor(actual_lambda)
+            # torch.full fills on the device; new_tensor would copy from pageable host memory,
+            # which synchronizes the host with the GPU every step.
+            actual_lambda = torch.full(
+                (), actual_lambda, dtype=scorenet.dtype, device=scorenet.device
+            )
 
         self.current_lambda = actual_lambda.detach()
 

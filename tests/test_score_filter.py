@@ -14,27 +14,23 @@ the most common one (games are 160 plies long).
 import math
 import os
 import subprocess
-import sys
 import threading
 import unittest
 from collections import Counter
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from test_dataloader_read_balance import (
-    REPO_ROOT,
-    SKIP_ALL_OFF,
-    _build_generator,
-    _fixture_dir,
-)
-
 from data_loader import stream
 from data_loader.config import (
     DataloaderDDPConfig,
     DataloaderIOConfig,
     DataloaderSkipConfig,
+)
+from tests.test_dataloader_read_balance import (
+    REPO_ROOT,
+    SKIP_ALL_OFF,
+    _build_generator,
+    _fixture_dir,
 )
 
 SCALE = 380.0
